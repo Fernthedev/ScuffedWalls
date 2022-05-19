@@ -1,20 +1,17 @@
-﻿namespace ScuffedWalls.Functions
+﻿namespace ScuffedWalls.Functions;
+
+[SFunction("Script")]
+internal class Script : ScuffedFunction
 {
-    [SFunction("Script")]
-    class Script : ScuffedFunction
+    protected override void Init()
     {
-        protected override void Init()
-        {
+    }
 
-        }
-        protected override void Finish()
-        {
+    protected override void Finish()
+    {
+    }
 
-        }
-        protected override void Update()
-        {
-
-        }
-
+    protected override void Update()
+    {
     }
 }

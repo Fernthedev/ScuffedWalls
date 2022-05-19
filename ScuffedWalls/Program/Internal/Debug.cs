@@ -1,36 +1,33 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace ScuffedWalls
+namespace ScuffedWalls;
+
+public static class Debug
 {
-    public static class Debug
+    public static void TryAction(Action action, Action<Exception> onError)
     {
-        public static void TryAction(Action action, Action<Exception> onError)
+        if (ScuffedWallsContainer.ScuffedConfig.Debug)
         {
-             
-            if (ScuffedWallsContainer.ScuffedConfig.Debug) 
+            try
             {
-                try
-                {
-                    action();
-                }
-                catch(Exception e)
-                {
-                    Console.WriteLine(e.StackTrace);
-                }
-                return;
+                action();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.StackTrace);
             }
 
-            try
-            { 
-                action(); 
-            } 
-            catch(Exception e)
-            {
-                onError(e);
-            }
-             // action(); 
+            return;
         }
+
+        try
+        {
+            action();
+        }
+        catch (Exception e)
+        {
+            onError(e);
+        }
+        // action(); 
     }
 }

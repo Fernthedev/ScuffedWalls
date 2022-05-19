@@ -1,9 +1,10 @@
-﻿using DiscordRPC;
-using ModChart;
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using DiscordRPC;
+using DiscordRPC.Message;
+using ModChart;
 
 namespace ScuffedWalls
 {
@@ -12,14 +13,16 @@ namespace ScuffedWalls
         static DiscordRpcClient client;
 
         static Task AutoUpdater;
-        public BeatMap CurrentMap { get; set; }
-        public int Workspaces { get; set; }
+
         public RPC()
         {
             if (client == null)
             {
                 client = new DiscordRpcClient("791404111161196545");
-                client.OnError += (object sender, DiscordRPC.Message.ErrorMessage args) => { Console.WriteLine($"RPC Error: {args.Message}"); };
+                client.OnError += (object sender, ErrorMessage args) =>
+                {
+                    Console.WriteLine($"RPC Error: {args.Message}");
+                };
                 client.Initialize();
                 client.SetPresence(new RichPresence()
                 {
@@ -35,13 +38,19 @@ namespace ScuffedWalls
                     }
                 });
             }
+
             AutoUpdater = autoUpdateRPC();
         }
+
+        public BeatMap CurrentMap { get; set; }
+        public int Workspaces { get; set; }
+
         async Task autoUpdateRPC()
         {
             while (CurrentMap == null) await Task.Delay(500);
 
-            if (!ScuffedWallsContainer.ScuffedConfig.HideMapInRPC) client.UpdateDetails(ScuffedWallsContainer.Info["_songName"].ToString());
+            if (!ScuffedWallsContainer.ScuffedConfig.HideMapInRPC)
+                client.UpdateDetails(ScuffedWallsContainer.Info["_songName"].ToString());
 
             while (true)
             {
@@ -56,6 +65,4 @@ namespace ScuffedWalls
             }
         }
     }
-
-
 }

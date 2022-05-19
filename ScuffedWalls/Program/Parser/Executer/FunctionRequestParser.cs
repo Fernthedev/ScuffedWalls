@@ -1,81 +1,88 @@
-﻿using ModChart;
-using ScuffedWalls.Functions;
-using System;
+﻿using System;
 using System.Linq;
 using System.Reflection;
+using ModChart;
+using ScuffedWalls.Functions;
 
-namespace ScuffedWalls
+namespace ScuffedWalls;
+
+/// <summary>
+///     Adds this FunctionRequest's results to the given workspace and returns it.
+/// </summary>
+public class FunctionRequestParser : IRequestParser<FunctionRequest, BeatMap>
 {
-    /// <summary>
-    /// Adds this FunctionRequest's results to the given workspace and returns it.
-    /// </summary>
-    public class FunctionRequestParser : IRequestParser<FunctionRequest, BeatMap>
+    public static readonly Type[] Functions = Assembly
+        .GetExecutingAssembly()
+        .GetTypes()
+        .Where(t => t.Namespace == "ScuffedWalls.Functions" && t.GetCustomAttributes<SFunctionAttribute>().Any())
+        .ToArray();
+
+    private readonly Workspace _instanceWorkspace;
+
+    public FunctionRequestParser(FunctionRequest request, Workspace instance = null, bool hideLogs = false)
     {
-        public bool HideLogs { get; set; }
-        public FunctionRequest CurrentRequest => _request;
-        public BeatMap Result => _latestResultObjs;
-        public FunctionRequestParser(FunctionRequest request, Workspace instance = null, bool hideLogs = false)
-        {
-            HideLogs = hideLogs;
-            _request = request;
-            _instanceWorkspace = instance ?? BeatMap.Empty;
-        }
-        private Workspace _instanceWorkspace;
-        private FunctionRequest _request;
-        private BeatMap _latestResultObjs = BeatMap.Empty;
+        HideLogs = hideLogs;
+        CurrentRequest = request;
+        _instanceWorkspace = instance ?? BeatMap.Empty;
+    }
 
-        public static readonly Type[] Functions = Assembly
-                 .GetExecutingAssembly()
-                 .GetTypes()
-                 .Where(t => t.Namespace == "ScuffedWalls.Functions" && t.GetCustomAttributes<SFunctionAttribute>().Any())
-                 .ToArray();
-        public BeatMap GetResult()
-        {
-            AssignableInlineVariable.Ping();
-            // Parameter.UnUseAll(_request.UnderlyingParameters);
+    public bool HideLogs { get; set; }
+    public FunctionRequest CurrentRequest { get; }
 
-            bool isCustom = ScuffedRequestParser.Instance.CurrentRequest.CustomFunctionExists(_request.Name);
+    public BeatMap Result { get; private set; } = BeatMap.Empty;
 
-            if (!isCustom && !Functions.Any(f => f.GetCustomAttributes<SFunctionAttribute>().Any(a => a.ParserName.Any(n => n == _request.Name))))
+    public BeatMap GetResult()
+    {
+        AssignableInlineVariable.Ping();
+        // Parameter.UnUseAll(_request.UnderlyingParameters);
+
+        var isCustom = ScuffedRequestParser.Instance.CurrentRequest.CustomFunctionExists(CurrentRequest.Name);
+
+        if (!isCustom && !Functions.Any(f =>
+                f.GetCustomAttributes<SFunctionAttribute>().Any(a => a.ParserName.Any(n => n == CurrentRequest.Name))))
+            throw new InvalidFilterCriteriaException(
+                $"Function {CurrentRequest.Name} at Beat {CurrentRequest.Time} does NOT exist, skipping");
+
+        var func =
+            isCustom
+                ? typeof(CustomFunction)
+                : Functions.First(f =>
+                    f.BaseType == typeof(ScuffedFunction) && f.GetCustomAttributes<SFunctionAttribute>().Any(a =>
+                        !a.ParserName.Contains("[NONCALLABLE]") && a.ParserName.Any(n => n == CurrentRequest.Name)));
+
+
+        var repeatTime = CurrentRequest.RepeatAddTime != null
+            ? float.Parse(CurrentRequest.RepeatAddTime.StringData)
+            : 0.0f;
+        var initialTime = CurrentRequest.Time;
+
+        var repeatVars = new TreeList<AssignableInlineVariable>(AssignableInlineVariable.Exposer);
+        var repeat = new AssignableInlineVariable("repeat", "0");
+        var repeattotal = new AssignableInlineVariable("repeattotal", CurrentRequest.RepeatCount.ToString());
+        var beat = new AssignableInlineVariable("time", CurrentRequest.Time.ToString());
+        var originalTime = new AssignableInlineVariable("timeconst", CurrentRequest.Time.ToString());
+        repeatVars.Add(repeattotal);
+        repeatVars.Add(repeat);
+        repeatVars.Add(beat);
+        repeatVars.Add(originalTime);
+        foreach (var re in CurrentRequest.Parameters) re.Variables.Register(repeatVars);
+        CurrentRequest.TimeParam?.Variables.Register(repeatVars);
+
+
+        Debug.TryAction(() =>
             {
-                throw new InvalidFilterCriteriaException($"Function {_request.Name} at Beat {_request.Time} does NOT exist, skipping");
-            }
+                var funcInstance = (ScuffedFunction)Activator.CreateInstance(func);
 
-            Type func =
-                isCustom ? typeof(CustomFunction) :
-                Functions.First(f => f.BaseType == typeof(ScuffedFunction) && f.GetCustomAttributes<SFunctionAttribute>().Any(a => !a.ParserName.Contains("[NONCALLABLE]") && a.ParserName.Any(n => n == _request.Name)));
+                funcInstance.InstantiateSFunction(CurrentRequest, _instanceWorkspace, CurrentRequest.Time,
+                    CurrentRequest.RepeatCount);
 
 
-
-            float repeatTime = _request.RepeatAddTime != null ? float.Parse(_request.RepeatAddTime.StringData) : 0.0f;
-            float initialTime = _request.Time;
-
-            TreeList<AssignableInlineVariable> repeatVars = new TreeList<AssignableInlineVariable>(AssignableInlineVariable.Exposer);
-            AssignableInlineVariable repeat = new AssignableInlineVariable("repeat", "0");
-            AssignableInlineVariable repeattotal = new AssignableInlineVariable("repeattotal", _request.RepeatCount.ToString());
-            AssignableInlineVariable beat = new AssignableInlineVariable("time", _request.Time.ToString());
-            AssignableInlineVariable originalTime = new AssignableInlineVariable("timeconst", _request.Time.ToString());
-            repeatVars.Add(repeattotal);
-            repeatVars.Add(repeat);
-            repeatVars.Add(beat);
-            repeatVars.Add(originalTime);
-            foreach (var re in _request.Parameters) re.Variables.Register(repeatVars);
-            _request.TimeParam?.Variables.Register(repeatVars);
-
-
-            Debug.TryAction(() =>
-            {
-                ScuffedFunction funcInstance = (ScuffedFunction)Activator.CreateInstance(func);
-
-                funcInstance.InstantiateSFunction(_request, _instanceWorkspace, _request.Time, _request.RepeatCount);
-
-
-                for (int i = 0; i < _request.RepeatCount; i++)
+                for (var i = 0; i < CurrentRequest.RepeatCount; i++)
                 {
                     repeat.StringData = i.ToString();
-                    beat.StringData = _request.Time.ToString();
+                    beat.StringData = CurrentRequest.Time.ToString();
 
-                    funcInstance.SetTime(_request.Time + (i * repeatTime));
+                    funcInstance.SetTime(CurrentRequest.Time + i * repeatTime);
                     funcInstance.Repeat();
 
                     // WorkspaceRequestParser.Instance.RefreshCurrentParameters();
@@ -85,18 +92,21 @@ namespace ScuffedWalls
 
                 if (!HideLogs)
                 {
-                    string stats = string.Join(", ", funcInstance.Stats.Select(st => $"{st.Value} {st.Key.MakePlural(st.Value)}"));
-                    ScuffedWalls.Print($"Added \"{_request.Name}\" at beat {initialTime} {(string.IsNullOrEmpty(stats) ? "" : $"({stats})")}", Color: ConsoleColor.White, OverrideStackFrame: func.Name);
+                    var stats = string.Join(", ",
+                        funcInstance.Stats.Select(st => $"{st.Value} {st.Key.MakePlural(st.Value)}"));
+                    ScuffedWalls.Print(
+                        $"Added \"{CurrentRequest.Name}\" at beat {initialTime} {(string.IsNullOrEmpty(stats) ? "" : $"({stats})")}",
+                        Color: ConsoleColor.White, OverrideStackFrame: func.Name);
                 }
-
-            }, e =>
+            },
+            e =>
             {
-                throw new Exception($"Error executing function {_request.Name} at Beat {_request.Time}", e.InnerException ?? e);
+                throw new Exception($"Error executing function {CurrentRequest.Name} at Beat {CurrentRequest.Time}",
+                    e.InnerException ?? e);
             });
 
-            Parameter.Check(_request.UnderlyingParameters);
-            _latestResultObjs = _instanceWorkspace;
-            return _instanceWorkspace;
-        }
+        Parameter.Check(CurrentRequest.UnderlyingParameters);
+        Result = _instanceWorkspace;
+        return _instanceWorkspace;
     }
 }

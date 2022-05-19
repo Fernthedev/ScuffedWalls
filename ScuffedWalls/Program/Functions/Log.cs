@@ -1,9 +1,6 @@
-﻿using System;
+﻿namespace ScuffedWalls.Functions;
 
-namespace ScuffedWalls.Functions
+[SFunction("Log", "Void", "Empty", "Blank")]
+internal class Log : ScuffedFunction
 {
-    [SFunction("Log", "Void", "Empty", "Blank")]
-    class Log : ScuffedFunction
-    {
-    }
 }

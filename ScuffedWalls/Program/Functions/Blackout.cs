@@ -1,14 +1,13 @@
 ﻿using ModChart;
 
-namespace ScuffedWalls.Functions
+namespace ScuffedWalls.Functions;
+
+[SFunction("Blackout")]
+internal class Blackout : ScuffedFunction
 {
-    [SFunction("Blackout")]
-    class Blackout : ScuffedFunction
+    protected override void Update()
     {
-        protected override void Update()
-        {
-            RegisterChanges("Light", 1);
-            InstanceWorkspace.Lights.Add(new BeatMap.Event() { _time = Time, _type = 0, _value = 0 });
-        }
+        RegisterChanges("Light", 1);
+        InstanceWorkspace.Lights.Add(new BeatMap.Event { _time = Time, _type = 0, _value = 0 });
     }
 }
